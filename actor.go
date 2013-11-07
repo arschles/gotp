@@ -3,6 +3,7 @@ package goactor
 import (
 	"container/list"
 	"errors"
+	"fmt"
 	"sync"
 )
 
@@ -19,12 +20,14 @@ type Pid struct {
 	queue      *list.List
 	queue_lock *sync.RWMutex
 	//the channel to signal that the queue is ready for reading
-	ready      chan Unit
+	ready chan Unit
 	//the channel to signal that the actor backing this pid should shut down
-	stop       chan Unit
+	stop chan Unit
+	//the channel to signal a watcher that the actor backing this pid errored
+	errored chan error
 }
 
-type Receiver func(msg Message) Unit
+type Receiver func(msg Message) error
 
 //send a message asynchronously to the pid
 func (p Pid) Send(msg interface{}) Unit {
@@ -38,39 +41,65 @@ func (p Pid) Send(msg interface{}) Unit {
 	return Unit{}
 }
 
-//begin the shutdown process of pid. the returned channel will finish when the shutdown finishes
+//begin the shutdown process of pid, and send on the returned channel when the shutdown finished
 func (p Pid) Stop() chan Unit {
 	stopped := make(chan Unit)
 	go func() {
 		p.stop <- Unit{}
 		stopped <- Unit{}
-	}
+	}()
 	return stopped
+}
+
+//watch a pid for errors, and send on the returned channel if an error occured
+func (p Pid) Watch() chan error {
+	errChan := make(chan error)
+	go func() {
+		err := <-p.errored
+		errChan <- err
+	}()
+	return errChan
 }
 
 //create a new actor and return the pid, so you can send it messages
 func Spawn(fn Receiver) Pid {
-	p := Pid{queue: list.New(), queue_lock: new(sync.RWMutex), ready: make(chan Unit)}
+	p := Pid{queue: list.New(), queue_lock: new(sync.RWMutex), ready: make(chan Unit), stop: make(chan Unit), errored: make(chan error)}
 	ready := make(chan Unit)
 	//start the receive loop
 	go recvLoop(ready, p, fn)
 	return p
 }
 
+func makeError(i interface{}) error {
+	return errors.New(fmt.Sprintf("%s", i))
+}
+
 //run a receive loop
 func recvLoop(ready chan Unit, p Pid, fn Receiver) {
 	select {
-		case <- p.ready : {
+	case <-p.ready:
+		{
 			p.queue_lock.RLock()
 			elt := p.queue.Front()
 			if elt != nil {
 				p.queue.Remove(elt)
-				fn(elt.Value.(Message))
+				defer func() {
+					if r := recover(); r != nil {
+						go func() {
+							p.errored <- makeError(r)
+						}()
+					}
+				}()
+				err := fn(elt.Value.(Message))
+				if err != nil {
+					p.errored <- err
+				}
 			}
 			p.queue_lock.RUnlock()
 			recvLoop(ready, p, fn)
 		}
-		case <- p.stop : {
+	case <-p.stop:
+		{
 			return
 		}
 	}
