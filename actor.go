@@ -78,29 +78,25 @@ func makeError(i interface{}) error {
 func recvLoop(ready chan Unit, p Pid, fn Receiver) {
 	select {
 	case <-p.ready:
-		{
-			p.queue_lock.RLock()
-			elt := p.queue.Front()
-			if elt != nil {
-				p.queue.Remove(elt)
-				defer func() {
-					if r := recover(); r != nil {
-						go func() {
-							p.errored <- makeError(r)
-						}()
-					}
-				}()
-				err := fn(elt.Value.(Message))
-				if err != nil {
-					p.errored <- err
+		p.queue_lock.RLock()
+		elt := p.queue.Front()
+		if elt != nil {
+			p.queue.Remove(elt)
+			defer func() {
+				if r := recover(); r != nil {
+					go func() {
+						p.errored <- makeError(r)
+					}()
 				}
+			}()
+			err := fn(elt.Value.(Message))
+			if err != nil {
+				p.errored <- err
 			}
-			p.queue_lock.RUnlock()
-			recvLoop(ready, p, fn)
 		}
+		p.queue_lock.RUnlock()
+		recvLoop(ready, p, fn)
 	case <-p.stop:
-		{
-			return
-		}
+		return
 	}
 }
