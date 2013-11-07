@@ -7,6 +7,13 @@ import (
 )
 
 //public types
+
+//the actor itself simply must define these functions
+type Actor interface {
+	//Passing in the pid here allows us to call self.StartChild, self.StartLink, etc
+	Recieve(msg Message, self Pid) Unit
+}
+
 type Message struct {
 	Sender  Pid
 	Payload interface{}
@@ -23,8 +30,6 @@ type Pid struct {
 	//the channel to signal that the actor backing this pid should shut down
 	stop       chan Unit
 }
-
-type Receiver func(msg Message) Unit
 
 //send a message asynchronously to the pid
 func (p Pid) Send(msg interface{}) Unit {
@@ -48,27 +53,34 @@ func (p Pid) Stop() chan Unit {
 	return stopped
 }
 
+//start a child of the given Pid
+func (p Pid) StartChild(actor Actor) Pid {
+	//for now just spawn, in the future wire up watches
+	child := Spawn(actor)
+	return child
+}
+
 //create a new actor and return the pid, so you can send it messages
-func Spawn(fn Receiver) Pid {
+func Spawn(actor Actor) Pid {
 	p := Pid{queue: list.New(), queue_lock: new(sync.RWMutex), ready: make(chan Unit)}
 	ready := make(chan Unit)
 	//start the receive loop
-	go recvLoop(ready, p, fn)
+	go recvLoop(ready, p, actor)
 	return p
 }
 
 //run a receive loop
-func recvLoop(ready chan Unit, p Pid, fn Receiver) {
+func recvLoop(ready chan Unit, p Pid, actor Actor) {
 	select {
 		case <- p.ready : {
 			p.queue_lock.RLock()
 			elt := p.queue.Front()
 			if elt != nil {
 				p.queue.Remove(elt)
-				fn(elt.Value.(Message))
+				actor.Receive(elt.Value.(Message), p)
 			}
 			p.queue_lock.RUnlock()
-			recvLoop(ready, p, fn)
+			recvLoop(ready, p, actor)
 		}
 		case <- p.stop : {
 			return
