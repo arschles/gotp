@@ -94,6 +94,9 @@ func recvLoop(ready chan Unit, p Pid, actor Actor) {
 		elt := p.queue.Front()
 		if elt != nil {
 			p.queue.Remove(elt)
+		}
+		p.queue_lock.RUnlock
+		if elt != nil {
 			defer func() {
 				if r := recover(); r != nil {
 					go func() {
@@ -106,7 +109,6 @@ func recvLoop(ready chan Unit, p Pid, actor Actor) {
 				p.errored <- err
 			}
 		}
-		p.queue_lock.RUnlock()
 		recvLoop(ready, p, actor)
 	case <-p.stop:
 		return
