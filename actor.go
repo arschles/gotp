@@ -8,6 +8,13 @@ import (
 )
 
 //public types
+
+//the actor itself simply must define these functions
+type Actor interface {
+	//Passing in the pid here allows us to call self.StartChild, self.StartLink, etc
+	Receive(msg Message, self Pid) error
+}
+
 type Message struct {
 	Sender  Pid
 	Payload interface{}
@@ -26,8 +33,6 @@ type Pid struct {
 	//the channel to signal a watcher that the actor backing this pid errored
 	errored chan error
 }
-
-type Receiver func(msg Message) error
 
 //send a message asynchronously to the pid
 func (p Pid) Send(msg interface{}) Unit {
@@ -51,6 +56,13 @@ func (p Pid) Stop() chan Unit {
 	return stopped
 }
 
+//start a child of the given Pid
+func (p Pid) StartChild(actor Actor) Pid {
+	//for now just spawn, in the future wire up watches
+	child := Spawn(actor)
+	return child
+}
+
 //watch a pid for errors, and send on the returned channel if an error occured
 func (p Pid) Watch() chan error {
 	errChan := make(chan error)
@@ -62,11 +74,11 @@ func (p Pid) Watch() chan error {
 }
 
 //create a new actor and return the pid, so you can send it messages
-func Spawn(fn Receiver) Pid {
+func Spawn(actor Actor) Pid {
 	p := Pid{queue: list.New(), queue_lock: new(sync.RWMutex), ready: make(chan Unit), stop: make(chan Unit), errored: make(chan error)}
 	ready := make(chan Unit)
 	//start the receive loop
-	go recvLoop(ready, p, fn)
+	go recvLoop(ready, p, actor)
 	return p
 }
 
@@ -75,13 +87,16 @@ func makeError(i interface{}) error {
 }
 
 //run a receive loop
-func recvLoop(ready chan Unit, p Pid, fn Receiver) {
+func recvLoop(ready chan Unit, p Pid, actor Actor) {
 	select {
 	case <-p.ready:
 		p.queue_lock.RLock()
 		elt := p.queue.Front()
 		if elt != nil {
 			p.queue.Remove(elt)
+		}
+		p.queue_lock.RUnlock
+		if elt != nil {
 			defer func() {
 				if r := recover(); r != nil {
 					go func() {
@@ -89,13 +104,12 @@ func recvLoop(ready chan Unit, p Pid, fn Receiver) {
 					}()
 				}
 			}()
-			err := fn(elt.Value.(Message))
+			err := actor.Recieve(elt.Value.(Message), p)
 			if err != nil {
 				p.errored <- err
 			}
 		}
-		p.queue_lock.RUnlock()
-		recvLoop(ready, p, fn)
+		recvLoop(ready, p, actor)
 	case <-p.stop:
 		return
 	}
