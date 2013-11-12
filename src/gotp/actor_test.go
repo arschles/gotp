@@ -2,7 +2,6 @@ package gotp
 
 import (
 	"testing"
-	"fmt"
 	"time"
 )
 
@@ -11,22 +10,41 @@ type TestMessage struct {}
 type TestActor struct {
 	GoActor
 
-	Received bool
+	Received int
 }
 
 func (t *TestActor) Receive(msg Message) error {
-	fmt.Println("Received message")
-	t.Received = true
+	t.Received++
 	return nil
 }
 
 func TestActorSpawn(t *testing.T) {
-	test := TestActor{Received:false}
+	test := TestActor{Received:0}
 	pid := Spawn(&test)
-	fmt.Println("Sending message")
 	pid.Send(TestMessage{})
     time.Sleep(200)
-    if test.Received != true {
+    if test.Received != 1 {
     	t.Error("Never received")
     }
+}
+
+func BenchmarkActorSingleSender(b *testing.B) {
+	test := TestActor{Received:0}
+	pid := Spawn(&test)
+	for n := 0; n < b.N; n++ {
+		pid.Send(TestMessage{})
+	}
+}
+
+func BenchmarkActorMultiSender(b *testing.B) {
+	test := TestActor{Received:0}
+	pid := Spawn(&test)
+	for n := 0; n < b.N; n++ {
+		go func() {
+			pid.Send(TestMessage{})
+		}()
+	}
+	for test.Received < b.N {
+		//wait
+	}
 }
