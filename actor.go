@@ -1,4 +1,4 @@
-package goactor
+package gotp
 
 import (
 	"container/list"
@@ -10,9 +10,19 @@ import (
 //public types
 
 //the actor itself simply must define these functions
+//DON'T IMPLEMENT THIS DIRECTLY, Implement GoActor
 type Actor interface {
 	//Passing in the pid here allows us to call self.StartChild, self.StartLink, etc
-	Receive(msg Message, self Pid) error
+	Receive(msg Message) error
+
+	Init(self Pid) error
+}
+
+type GoActor struct {
+	self Pid
+}
+func (ac *GoActor) Init(pid Pid) {
+	ac.self = pid
 }
 
 type Message struct {
@@ -35,7 +45,7 @@ type Pid struct {
 }
 
 //send a message asynchronously to the pid
-func (p Pid) Send(msg interface{}) Unit {
+func (p *Pid) Send(msg interface{}) Unit {
 	m := Message{Sender: p, Payload: msg}
 	p.queue_lock.Lock()
 	p.queue.PushBack(m)
@@ -47,7 +57,7 @@ func (p Pid) Send(msg interface{}) Unit {
 }
 
 //begin the shutdown process of pid, and send on the returned channel when the shutdown finished
-func (p Pid) Stop() chan Unit {
+func (p *Pid) Stop() chan Unit {
 	stopped := make(chan Unit)
 	go func() {
 		p.stop <- Unit{}
@@ -57,14 +67,14 @@ func (p Pid) Stop() chan Unit {
 }
 
 //start a child of the given Pid
-func (p Pid) StartChild(actor Actor) Pid {
+func (p *Pid) StartChild(actor Actor) Pid {
 	//for now just spawn, in the future wire up watches
 	child := Spawn(actor)
 	return child
 }
 
 //watch a pid for errors, and send on the returned channel if an error occured
-func (p Pid) Watch() chan error {
+func (p *Pid) Watch() chan error {
 	errChan := make(chan error)
 	go func() {
 		err := <-p.errored
@@ -74,8 +84,9 @@ func (p Pid) Watch() chan error {
 }
 
 //create a new actor and return the pid, so you can send it messages
-func Spawn(actor Actor) Pid {
+func Spawn(actor *Actor) Pid {
 	p := Pid{queue: list.New(), queue_lock: new(sync.RWMutex), ready: make(chan Unit), stop: make(chan Unit), errored: make(chan error)}
+	&Actor.Init(p)
 	ready := make(chan Unit)
 	//start the receive loop
 	go recvLoop(ready, p, actor)
@@ -87,15 +98,15 @@ func makeError(i interface{}) error {
 }
 
 //run a receive loop
-func recvLoop(ready chan Unit, p Pid, actor Actor) {
+func recvLoop(ready chan Unit, p *Pid, actor *Actor) {
 	select {
 	case <-p.ready:
-		p.queue_lock.RLock()
+		&p.queue_lock.RLock()
 		elt := p.queue.Front()
 		if elt != nil {
 			p.queue.Remove(elt)
 		}
-		p.queue_lock.RUnlock
+		&p.queue_lock.RUnlock
 		if elt != nil {
 			defer func() {
 				if r := recover(); r != nil {
@@ -104,13 +115,13 @@ func recvLoop(ready chan Unit, p Pid, actor Actor) {
 					}()
 				}
 			}()
-			err := actor.Receive(elt.Value.(Message), p)
+			err := &actor.Receive(elt.Value.(Message))
 			if err != nil {
-				p.errored <- err
+				&p.errored <- err
 			}
 		}
 		recvLoop(ready, p, actor)
-	case <-p.stop:
+	case <- &p.stop:
 		return
 	}
 }
