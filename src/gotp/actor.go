@@ -26,7 +26,6 @@ func (ac *GoActor) Init(pid Pid) {
 }
 
 type Message struct {
-	Sender  Pid
 	Payload interface{}
 }
 
@@ -46,7 +45,7 @@ type Pid struct {
 
 //send a message asynchronously to the pid
 func (p *Pid) Send(msg interface{}) Unit {
-	m := Message{Sender: p, Payload: msg}
+	m := Message{msg}
 	p.queue_lock.Lock()
 	p.queue.PushBack(m)
 	go func() {
