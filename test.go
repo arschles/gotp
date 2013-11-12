@@ -1,58 +1,32 @@
 package main
 
-import "fmt"
-
-func work(num int, recv chan int, next chan int, done chan int, run func()) {
-	fmt.Printf("created worker %d\n", num)
-	<-recv
-	fmt.Printf("starting worker %d\n", num)
-	run()
-	done <- 1
-	next <- 1
-	fmt.Printf("finished worker %d\n", num)
-}
-
-var recv chan int
-var next chan int
-var workerNum int
-
-//schedule a function to run.
-//returns the channel to which the worker will send when it's done
-func schedule(f func()) chan int {
-	done := make(chan int)
-	go work(workerNum, recv, next, done, f)
-	if workerNum == 0 {
-		recv <- 1
+func work(recv chan int, wait chan bool, fn func(int)) {
+	received := <-recv
+	println("work received ", received)
+	nextWait := make(chan bool)
+	runFn := func(msg int) {
+		<-wait
+		fn(msg)
+		nextWait <- true
 	}
-	workerNum++
-	recv = make(chan int)
-	next = make(chan int)
-	return done
+	go runFn(received)
+	work(recv, nextWait, fn)
 }
 
 func main() {
-	recv = make(chan int)
-	next = make(chan int)
-	workerNum = 1
+	recv := make(chan int)
+	wait := make(chan bool)
+	go func() {
+		wait <- true
+	}()
 
-	c1 := schedule(func() {
-		fmt.Println("doing stuff1")
-	})
+	worker := func(msg int) {
+		println("working on ", msg, "!")
+	}
+	go work(recv, wait, worker)
 
-	c2 := schedule(func() {
-		fmt.Println("doing stuff2")
-	})
-
-	c3 := schedule(func() {
-		fmt.Println("doing stuff3")
-	})
-
-	c4 := schedule(func() {
-		fmt.Println("doing stuff4")
-	})
-
-	<-c1
-	<-c2
-	<-c3
-	<-c4
+	//send stuff forever
+	for i := 1; i > 0; i++ {
+		recv <- i
+	}
 }
