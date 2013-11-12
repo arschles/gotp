@@ -4,18 +4,17 @@ import (
 	"testing"
 	"fmt"
 	"time"
-	"gotp"
 )
 
 type TestMessage struct {}
 
 type TestActor struct {
-	gotp.GoActor
+	GoActor
 
 	Received bool
 }
 
-func (t *TestActor) Receive(msg gotp.Message) error {
+func (t *TestActor) Receive(msg Message) error {
 	fmt.Println("Received message")
 	t.Received = true
 	return nil
@@ -23,10 +22,11 @@ func (t *TestActor) Receive(msg gotp.Message) error {
 
 func TestActorSpawn(t *testing.T) {
 	test := TestActor{Received:false}
-	pid := gotp.Spawn(&test)
+	pid := Spawn(&test)
+	fmt.Println("Sending message")
 	pid.Send(TestMessage{})
     time.Sleep(200)
-    if &test.Received != true {
+    if test.Received != true {
     	t.Error("Never received")
     }
 }
