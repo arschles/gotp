@@ -25,7 +25,7 @@ func TestActorSpawn(t *testing.T) {
 	go func() {
 		pid.Send(TestMessage{})
 	}()
-    time.Sleep(2000)
+    time.Sleep(1*time.Second)
     if test.Received != 1 {
     	t.Error("Never received")
     }
