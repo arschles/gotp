@@ -1,9 +1,10 @@
-package _gotp
+package gotp
 
 import (
 	"testing"
 	"fmt"
 	"time"
+	"gotp"
 )
 
 type TestMessage struct {}
@@ -11,16 +12,17 @@ type TestMessage struct {}
 type TestActor struct {
 	GoActor
 
-	Received := false
+	Received bool
+}
 
-	func Receive(msg Message) error {
-		Received = true
-	}
-
+func (t *TestActor) Receive(msg Message) error {
+	fmt.Println("Received message")
+	t.Received = true
+	return nil
 }
 
 func TestActorSpawn(t *testing.T) {
-	test := TestActor{}
+	test := TestActor{false}
 	pid := Spawn(test)
 	pid.Send(TestMessage)
     time.Sleep(200)
