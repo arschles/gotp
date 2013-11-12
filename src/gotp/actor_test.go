@@ -3,6 +3,7 @@ package gotp
 import (
 	"testing"
 	"time"
+	"fmt"
 )
 
 type TestMessage struct {}
@@ -21,8 +22,10 @@ func (t *TestActor) Receive(msg Message) error {
 func TestActorSpawn(t *testing.T) {
 	test := TestActor{Received:0}
 	pid := Spawn(&test)
-	pid.Send(TestMessage{})
-    time.Sleep(200)
+	go func() {
+		pid.Send(TestMessage{})
+	}()
+    time.Sleep(2000)
     if test.Received != 1 {
     	t.Error("Never received")
     }
@@ -45,6 +48,6 @@ func BenchmarkActorMultiSender(b *testing.B) {
 		}()
 	}
 	for test.Received < b.N {
-		//wait
+		fmt.Println(b.N, test.Received)
 	}
 }
