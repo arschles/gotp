@@ -3,7 +3,6 @@ package gotp
 import (
 	"testing"
 	"time"
-	"fmt"
 )
 
 type TestMessage struct {}
@@ -48,6 +47,5 @@ func BenchmarkActorMultiSender(b *testing.B) {
 		}()
 	}
 	for test.Received < b.N {
-		fmt.Println(b.N, test.Received)
 	}
 }
