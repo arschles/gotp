@@ -104,7 +104,7 @@ func recvLoop(ready chan Unit, p Pid, actor Actor) {
 					}()
 				}
 			}()
-			err := actor.Recieve(elt.Value.(Message), p)
+			err := actor.Receive(elt.Value.(Message), p)
 			if err != nil {
 				p.errored <- err
 			}
