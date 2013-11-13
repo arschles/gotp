@@ -14,20 +14,60 @@ type Actor interface {
 	//Passing in the pid here allows us to call self.StartChild, self.StartLink, etc
 	Receive(msg Message) error
 
-	Init(self Pid) error
+	Init(self Pid)
+
+	StartChild(actor Actor) Pid
+	StartLink(actor Actor) Pid
+
+	Running() bool
+	stop()
 }
 
 type GoActor struct {
 	self Pid
+	alive bool
 }
 
-func (ac *GoActor) Init(pid Pid) error {
+func (ac *GoActor) Init(pid Pid) {
 	ac.self = pid
-	return nil
+	ac.alive = true
+}
+
+func (ac *GoActor) StartChild(actor Actor) Pid {
+	childPid := Spawn(actor)
+	watch := childPid.Watch()
+	go func() {
+		err := <- watch
+		ac.self.recv <- Message{Payload:Stop{err: err, Sender: childPid}}
+	}()
+	return childPid
+}
+
+func (ac *GoActor) StartLink(actor Actor) Pid {
+	linkPid := Spawn(actor)
+	watch := linkPid.Watch()
+	go func() {
+		err := <- watch
+		ac.self.stop <- err
+	}()
+	return linkPid
+}
+
+func (ac *GoActor) Running() bool {
+	return ac.alive
+}
+
+func (ac *GoActor) stop() {
+	ac.alive = false
 }
 
 type Message struct {
 	Payload interface{}
+}
+
+type Stop struct {
+	err error
+	Sender Pid
 }
 
 type Unit struct{}
@@ -36,7 +76,7 @@ type Pid struct {
 	//the channel over which to receive messages and deliver them to the actor
 	recv chan Message
 	//the channel to signal that the actor backing this pid should shut down
-	stop chan Unit
+	stop chan error
 	//the channel to signal a watcher that the actor backing this pid errored
 	errored chan error
 }
@@ -52,17 +92,10 @@ func (p *Pid) Send(msg interface{}) Unit {
 func (p *Pid) Stop() chan Unit {
 	stopped := make(chan Unit)
 	go func() {
-		p.stop <- Unit{}
+		p.stop <- nil
 		stopped <- Unit{}
 	}()
 	return stopped
-}
-
-//start a child of the given Pid
-func (p *Pid) StartChild(actor Actor) Pid {
-	//for now just spawn, in the future wire up watches
-	child := Spawn(actor)
-	return child
 }
 
 //watch a pid for errors, and send on the returned channel if an error occured
@@ -77,7 +110,7 @@ func (p *Pid) Watch() chan error {
 
 //create a new actor and return the pid, so you can send it messages
 func Spawn(actor Actor) Pid {
-	p := Pid{recv: make(chan Message), stop: make(chan Unit), errored: make(chan error)}
+	p := Pid{recv: make(chan Message), stop: make(chan error), errored: make(chan error)}
 	actor.Init(p)
 	//create the first wait barrier, and prime it for the first iteration of the receive loop
 	//start the receive loop
@@ -102,9 +135,19 @@ func recvLoop(recv chan Message, p Pid, actor Actor) {
 			p.errored <- makeError(r)
 		}
 	}()
+	stop := make(chan error)
 	//loop forever
 	for {
 		select {
+		case err := <- stop:
+			//do something with the error
+			p.errored <- err
+			actor.stop()
+			return
+		case <-p.stop:
+			//do something with the stop
+			actor.stop()
+			return
 		case received := <- p.recv:
 			// fmt.Println("Received", received)
 			currWait := nextWait
@@ -114,8 +157,7 @@ func recvLoop(recv chan Message, p Pid, actor Actor) {
 				// fmt.Println("runFn()", received)
 				defer func() {
 					if r := recover(); r != nil {
-						p.errored <- makeError(r)
-						// fmt.Println("Error in runFn", makeError(r))
+						stop <- makeError(r)
 					}
 				}()
 				// fmt.Println("receiving on currWait", received, currWait, runtime.NumGoroutine())
@@ -123,22 +165,15 @@ func recvLoop(recv chan Message, p Pid, actor Actor) {
 				// fmt.Println("received on currWait", received, currWait)
 				err := actor.Receive(received)
 				if err != nil {
-					p.errored <- err
+					stop <- err
 				}
 				// fmt.Println("sending to opsNextWait", received, opsNextWait)
 				opsNextWait <- true
 				// fmt.Println("sent to opsNextWait", received, opsNextWait)
 			}
 			go runFn()
-		case err := <- p.errored:
-			//do something with the error
-			fmt.Println("ERROR:", err)
-			return
-		case <-p.stop:
-			//do something with the stop
-			return
 		case <-time.After(5*time.Second):
-			fmt.Println("No messages in 5 seconds")
+			fmt.Println("No messages in 5 seconds to", actor)
 		}
 	}
 }
