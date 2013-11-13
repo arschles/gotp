@@ -3,7 +3,6 @@ package gotp
 import (
 	"testing"
 	"fmt"
-	"runtime"
 	"sync"
 	"time"
 	"errors"
@@ -70,7 +69,6 @@ func (ch *CreatesChildActor) Receive(msg Message) error {
 }
 
 func TestActorSpawn(t *testing.T) {
-	runtime.GOMAXPROCS(4)
 	test := TestActor{}
 	test.Wg.Add(1)
 	pid := Spawn(&test)
@@ -82,7 +80,6 @@ func TestActorSpawn(t *testing.T) {
 }
 
 func TestStartLink(t *testing.T) {
-	runtime.GOMAXPROCS(4)
 	test := CreatesLinkActor{}
 	test.Wg.Add(1)
 	pid := Spawn(&test)
@@ -98,7 +95,6 @@ func TestStartLink(t *testing.T) {
 }
 
 func TestStartChild(t *testing.T) {
-	runtime.GOMAXPROCS(4)
 	test := CreatesChildActor{}
 	test.Wg.Add(2)
 	pid := Spawn(&test)
@@ -110,7 +106,6 @@ func TestStartChild(t *testing.T) {
 }
 
 func BenchmarkActorSingleSender(b *testing.B) {
-	runtime.GOMAXPROCS(4)
 	test := TestActor{}
 	test.Wg.Add(b.N)
 	pid := Spawn(&test)
@@ -124,7 +119,6 @@ func BenchmarkActorSingleSender(b *testing.B) {
 }
 
 func BenchmarkActorTenSenders(b *testing.B) {
-	runtime.GOMAXPROCS(4)
 	test := TestActor{}
 	test.Wg.Add(b.N*10)
 	pid := Spawn(&test)
@@ -140,7 +134,6 @@ func BenchmarkActorTenSenders(b *testing.B) {
 }
 
 func BenchmarkActorMultiSender(b *testing.B) {
-	runtime.GOMAXPROCS(4)
 	test := TestActor{}
 	test.Wg.Add(b.N)
 	pid := Spawn(&test)
@@ -166,7 +159,6 @@ func BenchmarkActorMultiSender(b *testing.B) {
 func BenchmarkBaseline(b *testing.B) {
 	var wg sync.WaitGroup
 	wg.Add(b.N)
-	runtime.GOMAXPROCS(4)
 	channel := make(chan int)
 	go func() {
 		for n := 0; n < b.N; n++ {
