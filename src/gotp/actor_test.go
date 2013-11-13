@@ -17,7 +17,7 @@ type TestActor struct {
 
 func (t *TestActor) Receive(msg Message) error {
 	t.Received++
-	if t.Received % 50000 == 0 {
+	if t.Received % 100000 == 0 {
 		fmt.Println(t.Received, runtime.NumGoroutine())
 	}
 	return nil
@@ -51,7 +51,7 @@ func BenchmarkActorSingleSender(b *testing.B) {
 }
 
 func BenchmarkActorMultiSender(b *testing.B) {
-	runtime.GOMAXPROCS(4)
+	runtime.GOMAXPROCS(32)
 	test := TestActor{Received:0}
 	pid := Spawn(&test)	
 	go func() {
@@ -61,6 +61,11 @@ func BenchmarkActorMultiSender(b *testing.B) {
 	}()
 	for n := 0; n < b.N; n++ {
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Println("Failed to send", r)
+				}
+			}()
 			pid.Send(TestMessage{})
 		}()
 	    //time.Sleep(1000*time.Nanosecond)

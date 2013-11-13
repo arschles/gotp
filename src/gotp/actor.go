@@ -89,7 +89,6 @@ func makeError(i interface{}) error {
 }
 
 func recvLoop(recv chan Message, p Pid, actor Actor) {
-	fmt.Println("Starting")
 	//create the first nextwait channel
 	nextWait := make(chan bool)
 	firstWait := nextWait
@@ -113,6 +112,7 @@ func recvLoop(recv chan Message, p Pid, actor Actor) {
 				defer func() {
 					if r := recover(); r != nil {
 						p.errored <- makeError(r)
+						fmt.Println("ERRORED")
 					}
 				}()
 				<-currWait
@@ -125,9 +125,11 @@ func recvLoop(recv chan Message, p Pid, actor Actor) {
 			go runFn()
 		case <-p.errored:
 			//do something with the error
+			fmt.Println("ERRORED")
 			return
 		case <-p.stop:
 			//do something with the stop
+			fmt.Println("STOPPED")
 			return
 		}
 	}
