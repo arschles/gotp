@@ -2,9 +2,9 @@ package gotp
 
 import (
 	"testing"
-	"time"
 	"fmt"
 	"runtime"
+	"sync"
 )
 
 type TestMessage struct {
@@ -14,20 +14,20 @@ type TestMessage struct {
 type TestActor struct {
 	GoActor
 
-	Received int
+	Wg sync.WaitGroup
 }
 
 func (t *TestActor) Receive(msg Message) error {
-	t.Received++
-	if t.Received % 100000 == 0 {
-		fmt.Println(t.Received, runtime.NumGoroutine())
+	t.Wg.Done()
+	if id := msg.Payload.(TestMessage).id; id % 100000 == 0 {
 	}
 	return nil
 }
 
 func TestActorSpawn(t *testing.T) {
 	runtime.GOMAXPROCS(4)
-	test := TestActor{Received:0}
+	test := TestActor{}
+	test.Wg.Add(1)
 	pid := Spawn(&test)
 	go func() {
 		errChan := pid.Watch()
@@ -37,31 +37,45 @@ func TestActorSpawn(t *testing.T) {
 	go func() {
 		pid.Send(TestMessage{1})
 	}()
-    time.Sleep(1*time.Second)
-    if test.Received != 1 {
-    	t.Error("Never received")
-    }
+    test.Wg.Wait()
+    pid.Stop()
 }
 
 func BenchmarkActorSingleSender(b *testing.B) {
-	runtime.GOMAXPROCS(2)
-	test := TestActor{Received:0}
+	runtime.GOMAXPROCS(4)
+	test := TestActor{}
+	test.Wg.Add(b.N)
 	pid := Spawn(&test)
 	go func() {
 		for n := 0; n < b.N; n++ {
 			pid.Send(TestMessage{n})
 		}
 	}()
-	fmt.Println("Done sending messages")
-	for test.Received < b.N {
+	test.Wg.Wait()
+	pid.Stop()
+}
+
+func BenchmarkActorTenSenders(b *testing.B) {
+	runtime.GOMAXPROCS(4)
+	test := TestActor{}
+	test.Wg.Add(b.N*10)
+	pid := Spawn(&test)
+	for i := 0; i < 10; i++ {
+		go func() {
+			for n := 0; n < b.N; n++ {
+				pid.Send(TestMessage{n})
+			}
+		}()
 	}
+	test.Wg.Wait()
 	pid.Stop()
 }
 
 func BenchmarkActorMultiSender(b *testing.B) {
-	runtime.GOMAXPROCS(32)
-	test := TestActor{Received:0}
-	pid := Spawn(&test)	
+	runtime.GOMAXPROCS(4)
+	test := TestActor{}
+	test.Wg.Add(b.N)
+	pid := Spawn(&test)
 	go func() {
 		errChan := pid.Watch()
 		err := <- errChan
@@ -76,10 +90,26 @@ func BenchmarkActorMultiSender(b *testing.B) {
 			}()
 			pid.Send(TestMessage{n})
 		}()
-	    //time.Sleep(1000*time.Nanosecond)
 	}
-	fmt.Println("Done sending messages")
-	for test.Received < b.N {
-	}
+	test.Wg.Wait()
 	pid.Stop()
+}
+
+func BenchmarkGoChannels(b *testing.B) {
+	var wg sync.WaitGroup
+	wg.Add(b.N)
+	runtime.GOMAXPROCS(4)
+	channel := make(chan int)
+	go func() {
+		for n := 0; n < b.N; n++ {
+			channel <- n
+		}
+	}()
+	go func() {
+		for n := 0; n < b.N; n++ {
+			<- channel
+		wg.Done()
+		}
+	}()
+	wg.Wait()
 }
