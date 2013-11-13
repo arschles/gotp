@@ -79,12 +79,8 @@ func Spawn(actor Actor) Pid {
 	p := Pid{recv: make(chan Message), stop: make(chan Unit), errored: make(chan error)}
 	actor.Init(p)
 	//create the first wait barrier, and prime it for the first iteration of the receive loop
-	wait := make(chan bool)
-	go func() {
-		wait <- true
-	}()
 	//start the receive loop
-	go recvLoop(p.recv, wait, p, actor)
+	go recvLoop(p.recv, p, actor)
 	return p
 }
 
@@ -92,31 +88,46 @@ func makeError(i interface{}) error {
 	return errors.New(fmt.Sprintf("%s", i))
 }
 
-//run a receive loop
-func recvLoop(recv chan Message, wait chan bool, p Pid, actor Actor) {
-	select {
-	case received := <-p.recv:
-		nextWait := make(chan bool)
-		runFn := func() {
-			defer func() {
-				if r := recover(); r != nil {
-					p.errored <- makeError(r)
-				}
-			}()
-			<-wait
-			err := actor.Receive(received)
-			if err != nil {
-				p.errored <- err
-			}
-			nextWait <- true
+func recvLoop(recv chan Message, p Pid, actor Actor) {
+	fmt.Println("Starting")
+	//create the first nextwait channel
+	nextWait := make(chan bool)
+	go func() {
+		nextWait <- true
+	}()
+	//handle panics in this loop
+	defer func() {
+		if r := recover(); r != nil {
+			p.errored <- makeError(r)
 		}
-		go runFn()
-		recvLoop(recv, nextWait, p, actor)
-	case <-p.errored:
-		//do something with the error
-		return
-	case <-p.stop:
-		//do something with the stop
-		return
+	}()
+	//loop forever
+	for {
+		select {
+		case received := <- p.recv:
+			currWait := nextWait
+			nextWait = make(chan bool)
+			opsNextWait := nextWait
+			runFn := func() {
+				defer func() {
+					if r := recover(); r != nil {
+						p.errored <- makeError(r)
+					}
+				}()
+				<-currWait
+				err := actor.Receive(received)
+				if err != nil {
+					p.errored <- err
+				}
+				opsNextWait <- true
+			}
+			go runFn()
+		case <-p.errored:
+			//do something with the error
+			return
+		case <-p.stop:
+			//do something with the stop
+			return
+		}
 	}
 }

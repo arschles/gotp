@@ -17,7 +17,7 @@ type TestActor struct {
 
 func (t *TestActor) Receive(msg Message) error {
 	t.Received++
-	if t.Received % 100000 == 0 {
+	if t.Received % 50000 == 0 {
 		fmt.Println(t.Received, runtime.NumGoroutine())
 	}
 	return nil
@@ -28,6 +28,11 @@ func TestActorSpawn(t *testing.T) {
 	test := TestActor{Received:0}
 	pid := Spawn(&test)
 	go func() {
+		errChan := pid.Watch()
+		err := <- errChan
+		fmt.Println("ACTOR ERRORED OUT", err)
+	}()
+	go func() {
 		pid.Send(TestMessage{})
 	}()
     time.Sleep(1*time.Second)
@@ -37,6 +42,7 @@ func TestActorSpawn(t *testing.T) {
 }
 
 func BenchmarkActorSingleSender(b *testing.B) {
+	runtime.GOMAXPROCS(4)
 	test := TestActor{Received:0}
 	pid := Spawn(&test)
 	for n := 0; n < b.N; n++ {
