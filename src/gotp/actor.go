@@ -3,6 +3,8 @@ package gotp
 import (
 	"errors"
 	"fmt"
+	"runtime"
+	"time"
 )
 
 //public types
@@ -105,22 +107,28 @@ func recvLoop(recv chan Message, p Pid, actor Actor) {
 	for {
 		select {
 		case received := <- p.recv:
+			fmt.Println("Received", received)
 			currWait := nextWait
 			nextWait = make(chan bool)
 			opsNextWait := nextWait
 			runFn := func() {
+				fmt.Println("runFn()", received)
 				defer func() {
 					if r := recover(); r != nil {
 						p.errored <- makeError(r)
 						fmt.Println("ERRORED")
 					}
 				}()
+				fmt.Println("receiving on currWait", received, currWait, runtime.NumGoroutine())
 				<-currWait
+				fmt.Println("received on currWait", received, currWait)
 				err := actor.Receive(received)
 				if err != nil {
 					p.errored <- err
 				}
+				fmt.Println("sending to opsNextWait", received, opsNextWait)
 				opsNextWait <- true
+				fmt.Println("sent to opsNextWait", received, opsNextWait)
 			}
 			go runFn()
 		case <-p.errored:
@@ -131,6 +139,8 @@ func recvLoop(recv chan Message, p Pid, actor Actor) {
 			//do something with the stop
 			fmt.Println("STOPPED")
 			return
+		case <-time.After(5*time.Second):
+			fmt.Println("No messages in 5 seconds")
 		}
 	}
 }

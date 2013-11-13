@@ -7,7 +7,9 @@ import (
 	"runtime"
 )
 
-type TestMessage struct {}
+type TestMessage struct {
+	id int
+}
 
 type TestActor struct {
 	GoActor
@@ -33,7 +35,7 @@ func TestActorSpawn(t *testing.T) {
 		fmt.Println("ACTOR ERRORED OUT", err)
 	}()
 	go func() {
-		pid.Send(TestMessage{})
+		pid.Send(TestMessage{1})
 	}()
     time.Sleep(1*time.Second)
     if test.Received != 1 {
@@ -42,12 +44,18 @@ func TestActorSpawn(t *testing.T) {
 }
 
 func BenchmarkActorSingleSender(b *testing.B) {
-	runtime.GOMAXPROCS(4)
+	runtime.GOMAXPROCS(2)
 	test := TestActor{Received:0}
 	pid := Spawn(&test)
-	for n := 0; n < b.N; n++ {
-		pid.Send(TestMessage{})
+	go func() {
+		for n := 0; n < b.N; n++ {
+			pid.Send(TestMessage{n})
+		}
+	}()
+	fmt.Println("Done sending messages")
+	for test.Received < b.N {
 	}
+	pid.Stop()
 }
 
 func BenchmarkActorMultiSender(b *testing.B) {
@@ -66,7 +74,7 @@ func BenchmarkActorMultiSender(b *testing.B) {
 					fmt.Println("Failed to send", r)
 				}
 			}()
-			pid.Send(TestMessage{})
+			pid.Send(TestMessage{n})
 		}()
 	    //time.Sleep(1000*time.Nanosecond)
 	}
