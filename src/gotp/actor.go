@@ -92,8 +92,9 @@ func recvLoop(recv chan Message, p Pid, actor Actor) {
 	fmt.Println("Starting")
 	//create the first nextwait channel
 	nextWait := make(chan bool)
+	firstWait := nextWait
 	go func() {
-		nextWait <- true
+		firstWait <- true
 	}()
 	//handle panics in this loop
 	defer func() {
