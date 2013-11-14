@@ -3,8 +3,9 @@ package gotp
 import (
 	"testing"
 	"fmt"
-	"runtime"
 	"sync"
+	"time"
+	"errors"
 )
 
 type TestMessage struct {
@@ -24,16 +25,53 @@ func (t *TestActor) Receive(msg Message) error {
 	return nil
 }
 
+type DiesActor struct {
+	GoActor
+
+	Wg *sync.WaitGroup
+}
+
+func (die *DiesActor) Receive(msg Message) error {
+	die.Wg.Done()
+	return errors.New("I am dead")	
+}
+
+type CreatesLinkActor struct {
+	GoActor
+
+	Wg sync.WaitGroup
+}
+
+func (link *CreatesLinkActor) Receive(msg Message) error {
+
+	toStart := DiesActor{Wg: &link.Wg}
+	pid := link.StartLink(&toStart)
+	pid.Send(Unit{})
+	return nil
+}
+
+type CreatesChildActor struct {
+	GoActor
+	child Pid
+	Wg sync.WaitGroup
+}
+
+func (ch *CreatesChildActor) Receive(msg Message) error {
+	switch msg.Payload.(type) {
+	case Stop:
+		ch.Wg.Done()
+	default:
+		toStart := DiesActor{Wg: &ch.Wg}
+		ch.child = ch.StartChild(&toStart)
+		ch.child.Send(Unit{})
+	}
+	return nil
+}
+
 func TestActorSpawn(t *testing.T) {
-	runtime.GOMAXPROCS(4)
 	test := TestActor{}
 	test.Wg.Add(1)
 	pid := Spawn(&test)
-	go func() {
-		errChan := pid.Watch()
-		err := <- errChan
-		fmt.Println("ACTOR ERRORED OUT", err)
-	}()
 	go func() {
 		pid.Send(TestMessage{1})
 	}()
@@ -41,8 +79,33 @@ func TestActorSpawn(t *testing.T) {
     pid.Stop()
 }
 
+func TestStartLink(t *testing.T) {
+	test := CreatesLinkActor{}
+	test.Wg.Add(1)
+	pid := Spawn(&test)
+	go func() {
+		pid.Send(Unit{})
+	}()
+	test.Wg.Wait()
+	time.Sleep(1*time.Second)
+	if test.Running() {
+		t.Error("Actor still running")
+	}
+	pid.Stop()
+}
+
+func TestStartChild(t *testing.T) {
+	test := CreatesChildActor{}
+	test.Wg.Add(2)
+	pid := Spawn(&test)
+	go func() {
+		pid.Send(Unit{})
+	}()
+	test.Wg.Wait()
+	pid.Stop()
+}
+
 func BenchmarkActorSingleSender(b *testing.B) {
-	runtime.GOMAXPROCS(4)
 	test := TestActor{}
 	test.Wg.Add(b.N)
 	pid := Spawn(&test)
@@ -56,7 +119,6 @@ func BenchmarkActorSingleSender(b *testing.B) {
 }
 
 func BenchmarkActorTenSenders(b *testing.B) {
-	runtime.GOMAXPROCS(4)
 	test := TestActor{}
 	test.Wg.Add(b.N*10)
 	pid := Spawn(&test)
@@ -72,7 +134,6 @@ func BenchmarkActorTenSenders(b *testing.B) {
 }
 
 func BenchmarkActorMultiSender(b *testing.B) {
-	runtime.GOMAXPROCS(4)
 	test := TestActor{}
 	test.Wg.Add(b.N)
 	pid := Spawn(&test)
@@ -95,10 +156,9 @@ func BenchmarkActorMultiSender(b *testing.B) {
 	pid.Stop()
 }
 
-func BenchmarkGoChannels(b *testing.B) {
+func BenchmarkBaseline(b *testing.B) {
 	var wg sync.WaitGroup
 	wg.Add(b.N)
-	runtime.GOMAXPROCS(4)
 	channel := make(chan int)
 	go func() {
 		for n := 0; n < b.N; n++ {
@@ -108,7 +168,7 @@ func BenchmarkGoChannels(b *testing.B) {
 	go func() {
 		for n := 0; n < b.N; n++ {
 			<- channel
-		wg.Done()
+			wg.Done()
 		}
 	}()
 	wg.Wait()
