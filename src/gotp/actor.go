@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 )
-
 //public types
 
 //the actor itself simply must define these functions

@@ -20,7 +20,6 @@ type TestActor struct {
 
 func (t *TestActor) Receive(msg Message) error {
 	t.Wg.Done()
-	time.Sleep(100*time.Nanosecond)
 	return nil
 }
 
