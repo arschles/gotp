@@ -2,14 +2,13 @@ package gotp
 
 import (
 	"encoding/gob"
-	"fmt"
 	"log"
 	"net"
 )
 
 //a type that represents a network stack that waits for messages and forwards them to a pid. all errors get forwarded to errChan
 type RecvChan struct {
-	//the Pid to foward messages to
+	//the Pid to foward messages to. this Pid could be a dispatcher to route messages to the right place
 	forwardPid Pid
 	//the channel to send all errors to, as they happen
 	errChan chan error
@@ -25,7 +24,7 @@ func (r *RecvChan) asyncSendError(err error) {
 }
 
 func (r *RecvChan) NetString() string {
-	return fmt.Sprintf("%v:%v", r.host, r.port)
+	return netString(r.host, r.port)
 }
 
 //create a new receive channel. when Start is called on the newly created channel, it will
@@ -34,8 +33,6 @@ func (r *RecvChan) NetString() string {
 func New(fp Pid, ec chan error, h string, p int) *RecvChan {
 	return &RecvChan{forwardPid: fp, errChan: ec, host: h, port: p}
 }
-
-type empty struct{}
 
 //start listening on the network, buffering and forwarding messages
 func (r *RecvChan) Start() {
@@ -52,7 +49,7 @@ func (r *RecvChan) Start() {
 					r.asyncSendError(err)
 				} else {
 					decoder := gob.NewDecoder(conn)
-					decoded := empty{}
+					decoded := []Unit{}
 					err := decoder.Decode(&decoded)
 					if err != nil {
 						log.Fatalln("error decoding", err)
