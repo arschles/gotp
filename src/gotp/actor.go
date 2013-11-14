@@ -3,7 +3,6 @@ package gotp
 import (
 	"errors"
 	"fmt"
-	"time"
 )
 
 //public types
@@ -135,45 +134,38 @@ func recvLoop(recv chan Message, p Pid, actor Actor) {
 			p.errored <- makeError(r)
 		}
 	}()
-	stop := make(chan error)
 	//loop forever
-	for {
-		select {
-		case err := <- stop:
-			//do something with the error
-			p.errored <- err
-			actor.stop()
+	going := true
+	go func() {
+		<-p.stop
+		going = false
+		actor.stop()
+	}()
+	for going {
+		received := <- p.recv
+		if going == false {
 			return
-		case <-p.stop:
-			//do something with the stop
-			actor.stop()
-			return
-		case received := <- p.recv:
-			// fmt.Println("Received", received)
-			currWait := nextWait
-			nextWait = make(chan bool)
-			opsNextWait := nextWait
-			runFn := func() {
-				// fmt.Println("runFn()", received)
-				defer func() {
-					if r := recover(); r != nil {
-						stop <- makeError(r)
-					}
-				}()
-				// fmt.Println("receiving on currWait", received, currWait, runtime.NumGoroutine())
-				<-currWait
-				// fmt.Println("received on currWait", received, currWait)
-				err := actor.Receive(received)
-				if err != nil {
-					stop <- err
-				}
-				// fmt.Println("sending to opsNextWait", received, opsNextWait)
-				opsNextWait <- true
-				// fmt.Println("sent to opsNextWait", received, opsNextWait)
-			}
-			go runFn()
-		case <-time.After(5*time.Second):
-			fmt.Println("No messages in 5 seconds to", actor)
 		}
+		currWait := nextWait
+		nextWait = make(chan bool)
+		opsNextWait := nextWait
+		runFn := func() {
+			defer func() {
+				if r := recover(); r != nil {
+					going = false
+					p.errored <- makeError(r)
+					actor.stop()
+				}
+			}()
+			<-currWait
+			err := actor.Receive(received)
+			if err != nil {
+				going = false
+				p.errored <- err
+				actor.stop()
+			}
+			opsNextWait <- true
+		}
+		go runFn()
 	}
 }

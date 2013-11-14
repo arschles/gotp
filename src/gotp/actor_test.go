@@ -6,7 +6,11 @@ import (
 	"sync"
 	"time"
 	"errors"
+	"log"
+	"net/http"
 )
+
+import _ "net/http/pprof"
 
 type TestMessage struct {
 	id int
@@ -20,8 +24,6 @@ type TestActor struct {
 
 func (t *TestActor) Receive(msg Message) error {
 	t.Wg.Done()
-	if id := msg.Payload.(TestMessage).id; id % 100000 == 0 {
-	}
 	return nil
 }
 
@@ -118,6 +120,16 @@ func BenchmarkActorSingleSender(b *testing.B) {
 	pid.Stop()
 }
 
+func BenchmarkActorSendOnly(b *testing.B) {
+	test := TestActor{}
+	test.Wg.Add(b.N)
+	pid := Spawn(&test)
+	for n := 0; n < b.N; n++ {
+		pid.Send(TestMessage{n})
+	}
+	pid.Stop()
+}
+
 func BenchmarkActorTenSenders(b *testing.B) {
 	test := TestActor{}
 	test.Wg.Add(b.N*10)
@@ -150,6 +162,31 @@ func BenchmarkActorMultiSender(b *testing.B) {
 				}
 			}()
 			pid.Send(TestMessage{n})
+		}()
+	}
+	test.Wg.Wait()
+	pid.Stop()
+}
+
+func BenchmarkActorMultiSenderTimesTen(b *testing.B) {
+	test := TestActor{}
+	test.Wg.Add(b.N*10)
+	pid := Spawn(&test)
+	go func() {
+		errChan := pid.Watch()
+		err := <- errChan
+		fmt.Println("ACTOR ERRORED OUT", err)
+	}()
+	for n := 0; n < b.N; n++ {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Println("Failed to send", r)
+				}
+			}()
+			for i := 0; i < 10; i++ {
+				pid.Send(TestMessage{n})
+			}
 		}()
 	}
 	test.Wg.Wait()
