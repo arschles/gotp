@@ -6,11 +6,7 @@ import (
 	"sync"
 	"time"
 	"errors"
-	"log"
-	"net/http"
 )
-
-import _ "net/http/pprof"
 
 type TestMessage struct {
 	id int
@@ -24,6 +20,7 @@ type TestActor struct {
 
 func (t *TestActor) Receive(msg Message) error {
 	t.Wg.Done()
+	time.Sleep(100*time.Nanosecond)
 	return nil
 }
 
