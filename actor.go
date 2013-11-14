@@ -1,9 +1,5 @@
 package gotp
 
-import (
-	"errors"
-	"fmt"
-)
 //public types
 
 //the actor itself simply must define these functions
@@ -22,7 +18,7 @@ type Actor interface {
 }
 
 type GoActor struct {
-	self Pid
+	self  Pid
 	alive bool
 }
 
@@ -35,8 +31,8 @@ func (ac *GoActor) StartChild(actor Actor) Pid {
 	childPid := Spawn(actor)
 	watch := childPid.Watch()
 	go func() {
-		err := <- watch
-		ac.self.recv <- Message{Payload:Stop{err: err, Sender: childPid}}
+		err := <-watch
+		ac.self.recv <- Message{Payload: Stop{err: err, Sender: childPid}}
 	}()
 	return childPid
 }
@@ -45,7 +41,7 @@ func (ac *GoActor) StartLink(actor Actor) Pid {
 	linkPid := Spawn(actor)
 	watch := linkPid.Watch()
 	go func() {
-		err := <- watch
+		err := <-watch
 		ac.self.stop <- err
 	}()
 	return linkPid
@@ -59,24 +55,9 @@ func (ac *GoActor) stop() {
 	ac.alive = false
 }
 
-type Message struct {
-	Payload interface{}
-}
-
 type Stop struct {
-	err error
+	err    error
 	Sender Pid
-}
-
-type Unit struct{}
-
-type Pid struct {
-	//the channel over which to receive messages and deliver them to the actor
-	recv chan Message
-	//the channel to signal that the actor backing this pid should shut down
-	stop chan error
-	//the channel to signal a watcher that the actor backing this pid errored
-	errored chan error
 }
 
 //send a message asynchronously to the pid
@@ -116,10 +97,6 @@ func Spawn(actor Actor) Pid {
 	return p
 }
 
-func makeError(i interface{}) error {
-	return errors.New(fmt.Sprintf("%s", i))
-}
-
 func recvLoop(recv chan Message, p Pid, actor Actor) {
 	//create the first nextwait channel
 	nextWait := make(chan bool)
@@ -141,7 +118,7 @@ func recvLoop(recv chan Message, p Pid, actor Actor) {
 		actor.stop()
 	}()
 	for going {
-		received := <- p.recv
+		received := <-p.recv
 		if going == false {
 			return
 		}
