@@ -12,6 +12,8 @@ type RecvChan struct {
 	forwardPid Pid
 	//the channel to send all errors to, as they happen
 	errChan chan error
+	//the channel that stops this channel from listening
+	stopChan chan struct{}
 	//the host and port on which this channel listens
 	host string
 	port int
@@ -32,7 +34,8 @@ func (r *RecvChan) NetString() string {
 //the receiver channel will forward each message it receives on the network to the pid fp
 func (r *RecvChan) Init(fp Pid, h string, p int) *RecvChan {
 	ec := make(chan error)
-	return &RecvChan{forwardPid: fp, errChan: ec, host: h, port: p}
+	sc := make(chan struct{})
+	return &RecvChan{forwardPid: fp, errChan: ec, stopChan: sc, host: h, port: p}
 }
 
 //return the channel on which this receiver channel will output its errors
@@ -49,23 +52,35 @@ func (r *RecvChan) Start() {
 			r.asyncSendError(err)
 		} else {
 			for {
-				conn, err := listener.Accept()
-				if err != nil {
-					log.Fatalln("error accepting", err)
-					r.asyncSendError(err)
-				} else {
-					decoder := gob.NewDecoder(conn)
-					decoded := []Unit{}
-					err := decoder.Decode(&decoded)
-					if err != nil {
-						log.Fatalln("error decoding", err)
-						r.asyncSendError(err)
-					} else {
-						r.forwardPid.Send(decoded)
+				select {
+				case <-r.stopChan:
+					break
+				default:
+					{
+						conn, err := listener.Accept()
+						if err != nil {
+							log.Fatalln("error accepting", err)
+							r.asyncSendError(err)
+						} else {
+							decoder := gob.NewDecoder(conn)
+							decoded := []Unit{}
+							err := decoder.Decode(&decoded)
+							if err != nil {
+								log.Fatalln("error decoding", err)
+								r.asyncSendError(err)
+							} else {
+								r.forwardPid.Send(decoded)
+							}
+						}
 					}
 				}
 			}
 		}
 	}
 	go starterFn()
+}
+
+//stop listening on the network. blocks until the stop is complete
+func (r *RecvChan) Stop() {
+	r.stopChan <- Unit{}
 }
