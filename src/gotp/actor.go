@@ -3,6 +3,7 @@ package gotp
 import (
 	"errors"
 	"fmt"
+	"sync"
 )
 //public types
 
@@ -133,14 +134,29 @@ func recvLoop(recv chan Message, p Pid, actor Actor) {
 			p.errored <- makeError(r)
 		}
 	}()
+	goingLock := sync.Mutex{}
 	//loop forever
 	going := true
-	go func() {
-		<-p.stop
+
+	stillGoing := func() bool {
+		goingLock.Lock()
+		defer goingLock.Unlock()
+		return going
+	}
+
+	stopGoing := func() {
+		goingLock.Lock()
 		going = false
 		actor.stop()
+		goingLock.Unlock()
+	}
+	
+	go func() {
+		<-p.stop
+		stopGoing()
 	}()
-	for going {
+
+	for stillGoing() {
 		received := <- p.recv
 		if going == false {
 			return
@@ -151,17 +167,15 @@ func recvLoop(recv chan Message, p Pid, actor Actor) {
 		runFn := func() {
 			defer func() {
 				if r := recover(); r != nil {
-					going = false
 					p.errored <- makeError(r)
-					actor.stop()
+					stopGoing()
 				}
 			}()
 			<-currWait
 			err := actor.Receive(received)
 			if err != nil {
-				going = false
 				p.errored <- err
-				actor.stop()
+				stopGoing()
 			}
 			opsNextWait <- true
 		}
