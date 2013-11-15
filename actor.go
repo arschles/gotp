@@ -1,8 +1,6 @@
 package gotp
 
 import (
-	"errors"
-	"fmt"
 	"sync"
 )
 
