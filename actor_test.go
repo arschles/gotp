@@ -1,11 +1,11 @@
 package gotp
 
 import (
-	"testing"
+	"errors"
 	"fmt"
 	"sync"
+	"testing"
 	"time"
-	"errors"
 )
 
 type TestMessage struct {
@@ -31,7 +31,7 @@ type DiesActor struct {
 
 func (die *DiesActor) Receive(msg Message) error {
 	die.Wg.Done()
-	return errors.New("I am dead")	
+	return errors.New("I am dead")
 }
 
 type CreatesLinkActor struct {
@@ -51,7 +51,7 @@ func (link *CreatesLinkActor) Receive(msg Message) error {
 type CreatesChildActor struct {
 	GoActor
 	child Pid
-	Wg sync.WaitGroup
+	Wg    sync.WaitGroup
 }
 
 func (ch *CreatesChildActor) Receive(msg Message) error {
@@ -73,8 +73,8 @@ func TestActorSpawn(t *testing.T) {
 	go func() {
 		pid.Send(TestMessage{1})
 	}()
-    test.Wg.Wait()
-    pid.Stop()
+	test.Wg.Wait()
+	pid.Stop()
 }
 
 func TestStartLink(t *testing.T) {
@@ -85,7 +85,7 @@ func TestStartLink(t *testing.T) {
 		pid.Send(Unit{})
 	}()
 	test.Wg.Wait()
-	time.Sleep(1*time.Second)
+	time.Sleep(1 * time.Second)
 	if test.Running() {
 		t.Error("Actor still running")
 	}
@@ -128,7 +128,7 @@ func BenchmarkActorSendOnly(b *testing.B) {
 
 func BenchmarkActorTenSenders(b *testing.B) {
 	test := TestActor{}
-	test.Wg.Add(b.N*10)
+	test.Wg.Add(b.N * 10)
 	pid := Spawn(&test)
 	for i := 0; i < 10; i++ {
 		go func() {
@@ -147,7 +147,7 @@ func BenchmarkActorMultiSender(b *testing.B) {
 	pid := Spawn(&test)
 	go func() {
 		errChan := pid.Watch()
-		err := <- errChan
+		err := <-errChan
 		fmt.Println("ACTOR ERRORED OUT", err)
 	}()
 	for n := 0; n < b.N; n++ {
@@ -166,11 +166,11 @@ func BenchmarkActorMultiSender(b *testing.B) {
 
 func BenchmarkActorMultiSenderTimesTen(b *testing.B) {
 	test := TestActor{}
-	test.Wg.Add(b.N*10)
+	test.Wg.Add(b.N * 10)
 	pid := Spawn(&test)
 	go func() {
 		errChan := pid.Watch()
-		err := <- errChan
+		err := <-errChan
 		fmt.Println("ACTOR ERRORED OUT", err)
 	}()
 	for n := 0; n < b.N; n++ {
@@ -200,7 +200,7 @@ func BenchmarkBaseline(b *testing.B) {
 	}()
 	go func() {
 		for n := 0; n < b.N; n++ {
-			<- channel
+			<-channel
 			wg.Done()
 		}
 	}()
