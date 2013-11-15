@@ -14,6 +14,7 @@ type TestMessage struct {
 	id int
 }
 
+//A good example actor
 type TestActor struct {
 	gotp.GoActor
 
