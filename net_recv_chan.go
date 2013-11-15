@@ -29,9 +29,15 @@ func (r *RecvChan) NetString() string {
 
 //create a new receive channel. when Start is called on the newly created channel, it will
 //listen on TCP on host:port.
-//the receiver channel will forward each message it receives on the network to the pid fp, and all errors to the channel ec
-func New(fp Pid, ec chan error, h string, p int) *RecvChan {
+//the receiver channel will forward each message it receives on the network to the pid fp
+func (r *RecvChan) Init(fp Pid, h string, p int) *RecvChan {
+	ec := make(chan error)
 	return &RecvChan{forwardPid: fp, errChan: ec, host: h, port: p}
+}
+
+//return the channel on which this receiver channel will output its errors
+func (r *RecvChan) ErrorChan() chan error {
+	return r.errChan
 }
 
 //start listening on the network, buffering and forwarding messages
