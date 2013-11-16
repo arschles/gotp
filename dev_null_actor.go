@@ -8,4 +8,5 @@ type DevNullActor struct {
 
 func (d *DevNullActor) Receive(msg Message) error {
 	log.Println("received", msg)
+	return nil
 }
