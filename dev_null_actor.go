@@ -7,6 +7,6 @@ type DevNullActor struct {
 }
 
 func (d *DevNullActor) Receive(msg Message) error {
-	log.Println("received", msg)
+	log.Println("dev-null-actor", "received", msg)
 	return nil
 }
