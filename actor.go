@@ -109,11 +109,8 @@ func recvLoop(recv chan Message, p Pid, actor Actor) {
 		firstWait <- true
 	}()
 	//handle panics in this loop
-	defer func() {
-		if r := recover(); r != nil {
-			p.errored <- makeError(r)
-		}
-	}()
+	defer forwardPanicToChan(p.errored)
+
 	goingLock := sync.Mutex{}
 	//loop forever
 	going := true
