@@ -86,7 +86,7 @@ func TestStartLink(t *testing.T) {
 	}()
 	test.Wg.Wait()
 	time.Sleep(1 * time.Second)
-	if test.Running() {
+	if test.alive {
 		t.Error("Actor still running")
 	}
 	pid.Stop()

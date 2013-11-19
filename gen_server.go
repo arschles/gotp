@@ -3,28 +3,46 @@ package gotp
 type GenServer interface {
 	HandleCall(Message) interface{}
 	HandleCast(Message)
-	Init()
 }
 
-type GoGenServer struct {}
+type GoGenServer struct {
+	GoActor
 
-func (serv *GoGenServer) init {}
-
-type GoGenCallServer struct {
-  GoGenServer
+	server GenServer 
 }
 
-func (serv *GoGenCallServer) HandleCast(msg Message) {
-	//no-op
-}
-
-
-//an example call-only gen server
-type CallOnlyServer struct {
-	//we use ("extend") GoGenCallServer because it implements a default cast method
-	GoGenCallServer
-}
-
-func (serv *CallOnlyServer) HandleCall(msg Message) interface{} {
+func (serv *GoGenServer) Receive(msg Message) error {
+ 	switch m := msg.Payload.(type) {
+	case cast:
+		serv.server.HandleCast(Message{m.message})
+	case call: 
+		m.respChan <- serv.server.HandleCall(Message{m.message})
+	default:
+		serv.server.HandleCast(Message{msg})
+	}
 	return nil
+}
+
+type call struct {
+	respChan chan interface{}
+	message interface{}
+}
+
+type cast struct {
+	message interface{}
+}
+
+func Gen(gen GenServer) Actor {
+	return &GoGenServer{server: gen}
+}
+
+func Call(pid Pid, msg interface{}) interface{} {
+	respChan := make(chan interface{})
+	callMsg := call{respChan, msg}
+	pid.Send(callMsg)
+	return <- respChan
+}
+
+func Cast(pid Pid, msg interface{}) {
+	pid.Send(cast{msg})
 }

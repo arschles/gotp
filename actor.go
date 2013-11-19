@@ -9,15 +9,12 @@ import (
 //the actor itself simply must define these functions
 //DON'T IMPLEMENT THIS DIRECTLY, Implement GoActor
 type Actor interface {
-	//Passing in the pid here allows us to call self.StartChild, self.StartLink, etc
 	Receive(msg Message) error
 
-	Init(self Pid)
+	init(self Pid)
 
 	StartChild(actor Actor) Pid
 	StartLink(actor Actor) Pid
-
-	Running() bool
 	stop()
 }
 
@@ -26,7 +23,7 @@ type GoActor struct {
 	alive bool
 }
 
-func (ac *GoActor) Init(pid Pid) {
+func (ac *GoActor) init(pid Pid) {
 	ac.self = pid
 	ac.alive = true
 }
@@ -49,10 +46,6 @@ func (ac *GoActor) StartLink(actor Actor) Pid {
 		ac.self.stop <- err
 	}()
 	return linkPid
-}
-
-func (ac *GoActor) Running() bool {
-	return ac.alive
 }
 
 func (ac *GoActor) stop() {
@@ -94,7 +87,7 @@ func (p *Pid) Watch() chan error {
 //create a new actor and return the pid, so you can send it messages
 func Spawn(actor Actor) Pid {
 	p := Pid{recv: make(chan Message), stop: make(chan error), errored: make(chan error)}
-	actor.Init(p)
+	actor.init(p)
 	//create the first wait barrier, and prime it for the first iteration of the receive loop
 	//start the receive loop
 	go recvLoop(p.recv, p, actor)
