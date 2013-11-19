@@ -1,14 +1,19 @@
 package gotp
 
 type GenServer interface {
+	Init()
 	HandleCall(Message) interface{}
 	HandleCast(Message)
 }
 
 type GoGenServer struct {
-	GoActor
+	GoActorWithInit
 
 	server GenServer 
+}
+
+func (serv *GoGenServer) Init() {
+	serv.server.Init()
 }
 
 func (serv *GoGenServer) Receive(msg Message) error {

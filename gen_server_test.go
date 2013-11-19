@@ -9,6 +9,8 @@ type TestGenServer struct {
 	Wg *sync.WaitGroup
 }
 
+func (t *TestGenServer) Init() {}
+
 func (t *TestGenServer) HandleCast(msg Message) {
 	t.Wg.Done()
 }
@@ -41,7 +43,7 @@ func TestCall(t *testing.T) {
 	pid.Stop()
 }
 
-func BenchmarkCastSingleSender(b *testing.B) {
+func BenchmarkCast(b *testing.B) {
 	var wg sync.WaitGroup
 	wg.Add(b.N)
 	pid := Spawn(Gen(&TestGenServer{&wg}))
