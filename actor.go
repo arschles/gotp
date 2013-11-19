@@ -9,29 +9,32 @@ import (
 //the actor itself simply must define these functions
 //DON'T IMPLEMENT THIS DIRECTLY, Implement GoActor
 type Actor interface {
-	//Passing in the pid here allows us to call self.StartChild, self.StartLink, etc
 	Receive(msg Message) error
 
-	Init(self Pid)
+	Init()
+	Self() Pid
+	selfInit(self Pid)
 
 	StartChild(actor Actor) Pid
 	StartLink(actor Actor) Pid
-
-	Running() bool
 	stop()
 }
 
-type GoActor struct {
+type GoActorWithInit struct {
 	self  Pid
 	alive bool
 }
 
-func (ac *GoActor) Init(pid Pid) {
+func (ac *GoActorWithInit) selfInit(pid Pid) {
 	ac.self = pid
 	ac.alive = true
 }
 
-func (ac *GoActor) StartChild(actor Actor) Pid {
+func (ac *GoActorWithInit) Self() Pid {
+	return ac.self
+}
+
+func (ac *GoActorWithInit) StartChild(actor Actor) Pid {
 	childPid := Spawn(actor)
 	watch := childPid.Watch()
 	go func() {
@@ -41,7 +44,7 @@ func (ac *GoActor) StartChild(actor Actor) Pid {
 	return childPid
 }
 
-func (ac *GoActor) StartLink(actor Actor) Pid {
+func (ac *GoActorWithInit) StartLink(actor Actor) Pid {
 	linkPid := Spawn(actor)
 	watch := linkPid.Watch()
 	go func() {
@@ -51,13 +54,15 @@ func (ac *GoActor) StartLink(actor Actor) Pid {
 	return linkPid
 }
 
-func (ac *GoActor) Running() bool {
-	return ac.alive
-}
-
-func (ac *GoActor) stop() {
+func (ac *GoActorWithInit) stop() {
 	ac.alive = false
 }
+
+type GoActor struct {
+	GoActorWithInit
+}
+
+func (ac *GoActor) Init() {}
 
 type Stop struct {
 	err    error
@@ -94,10 +99,24 @@ func (p *Pid) Watch() chan error {
 //create a new actor and return the pid, so you can send it messages
 func Spawn(actor Actor) Pid {
 	p := Pid{recv: make(chan Message), stop: make(chan error), errored: make(chan error)}
-	actor.Init(p)
-	//create the first wait barrier, and prime it for the first iteration of the receive loop
 	//start the receive loop
-	go recvLoop(p.recv, p, actor)
+	go func() {
+		actor.selfInit(p)
+		actor.Init()
+		recvLoop(p.recv, p, actor)
+	}()
+	return p
+}
+
+//create a new buffered actor and return the pid; a buffered actor has a limited mailbox,
+//subsequent messages to the buffered actor when mailbox is full will block
+func SpawnBuffered(actor Actor, buffer int) Pid {
+	p := Pid{recv: make(chan Message, buffer), stop: make(chan error), errored: make(chan error)}
+	go func() {
+		actor.selfInit(p)
+		actor.Init()
+		simpleRecvLoop(p.recv, p, actor)
+	}()
 	return p
 }
 
@@ -158,4 +177,19 @@ func recvLoop(recv chan Message, p Pid, actor Actor) {
 		}
 		go runFn()
 	}
+}
+
+func simpleRecvLoop(recv chan Message, p Pid, actor Actor) {
+	//handle panics in this loop
+	defer forwardPanicToChan(p.errored)
+
+	for {
+		received := <-p.recv
+		err := actor.Receive(received)
+		if err != nil {
+			p.errored <- err
+			return
+		}
+	}
+
 }
