@@ -85,8 +85,8 @@ func TestStartLink(t *testing.T) {
 		pid.Send(Unit{})
 	}()
 	test.Wg.Wait()
-	time.Sleep(1 * time.Second)
-	if test.Running() {
+	time.Sleep(20 * time.Microsecond)
+	if test.alive {
 		t.Error("Actor still running")
 	}
 	pid.Stop()
@@ -107,6 +107,19 @@ func BenchmarkActorSingleSender(b *testing.B) {
 	test := TestActor{}
 	test.Wg.Add(b.N)
 	pid := Spawn(&test)
+	go func() {
+		for n := 0; n < b.N; n++ {
+			pid.Send(TestMessage{n})
+		}
+	}()
+	test.Wg.Wait()
+	pid.Stop()
+}
+
+func BenchmarkBufferedActorSingleSender(b *testing.B) {
+	test := TestActor{}
+	test.Wg.Add(b.N)
+	pid := SpawnBuffered(&test, 25)
 	go func() {
 		for n := 0; n < b.N; n++ {
 			pid.Send(TestMessage{n})
@@ -192,7 +205,7 @@ func BenchmarkActorMultiSenderTimesTen(b *testing.B) {
 func BenchmarkBaseline(b *testing.B) {
 	var wg sync.WaitGroup
 	wg.Add(b.N)
-	channel := make(chan int)
+	channel := make(chan int, 25)
 	go func() {
 		for n := 0; n < b.N; n++ {
 			channel <- n
