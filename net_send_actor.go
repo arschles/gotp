@@ -1,9 +1,8 @@
 /*
 an actor that can buffer and send messages over the network to a specified hostname and port. example usage:
-	a := NetSendActor{}
-	//create the actor to buffer 100 messages to localhost:8080, and send all errors to errorPid
-	a.Dial(100, "localhost", 8080, errorPid)
-	sendPid := Spawn(&a)
+	//create the actor to buffer 100 messages to localhost:8080, and send all errors to errorPid.
+	//this call will attempt to connect to the server and then return the Pid that manages that connection
+	sendPid := NetSender(100, "localhost", 8080, errorPid)
 	//flush the buffer and send over the wire
 	for i := 0; i <= 100; i++ {
 		sendPid.Send("hello world")
@@ -13,7 +12,6 @@ package gotp
 
 import (
 	"encoding/gob"
-	"log"
 	"net"
 	"time"
 )
@@ -45,21 +43,17 @@ type NetSendTimeoutError struct {
 	Nanos time.Duration
 }
 
-//start the connection to the given host and port. sends all dialing errors to 
-func (s *NetSendActor) Dial(bufLen int, h string, p int, errs Pid) {
+//start the connection to the given host and port. sends all dialing errors to errs.
+//once the connection is made, creates and spawns the actor and returns the pid for that actort
+func NetSender(bufLen int, h string, p int, errs Pid) *Pid {
 	conn, err := net.DialTimeout("tcp", netString(h, p), 500*time.Millisecond)
 	if err != nil {
 		errs.Send(NetDialError{err})
-		log.Fatalln("error dialing", err)
-		return
+		return nil
 	}
-	s.host = h
-	s.port = p
-	s.errors = errs
-	s.buffer = make([]interface{}, bufLen)
-	s.conn = conn
-	s.encoder = gob.NewEncoder(conn)
-	return
+	actor := NetSendActor{host: h, port: p, conn: conn, encoder: gob.NewEncoder(conn), errors: errs, buffer: make([]interface{}, bufLen)}
+	pid := Spawn(&actor)
+	return &pid
 }
 
 func (s *NetSendActor) Receive(msg Message) error {
